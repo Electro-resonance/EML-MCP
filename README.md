@@ -3,8 +3,6 @@ MCP server for EML (Exp-Minus-Log) mathematical notation.
 
 `eml_mcp_server.py` is a single-file, text-based MCP server focused only on the symbolic EML and SymPy tool families.
 
-This slim edition removes the constants, CLSPR, Cosmolog, units, overlap, music, and workflow layers from the broader project so the repository is centred on one task: testing how LLMs use EML expansion and conventional symbolic algebra side by side.
-
 ## Why this project came to fruition
 
 The EML methods paper inspired me to develop a new MCP server so that I could test out the EML methods.
@@ -33,10 +31,10 @@ The server exposes seven MCP tools:
 ## Run modes
 
 ```bash
-python eml_mcp_server.py server
-python eml_mcp_server.py test
-python eml_mcp_server.py examples
-python eml_mcp_server.py all
+python3 eml_mcp_server.py server
+python3 eml_mcp_server.py test
+python3 eml_mcp_server.py examples
+python3 eml_mcp_server.py all
 ```
 
 ## Semi-complex but readable examples
