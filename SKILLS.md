@@ -7,6 +7,7 @@ This guide explains how to use the slim EML + SymPy edition of the MCP server.
 It is designed for workflows where you want to:
 
 - compile a standard mathematical expression into an explicit EML tree
+- optionally compile into a stricter pure-mode EML tree for structural inspection
 - inspect how an expression is represented in EML (Exp-Minus-Log) form
 - simplify, evaluate, and analyse that EML tree
 - fit compact symbolic laws to data and convert the best candidate into EML
@@ -24,12 +25,22 @@ The slim edition exposes the following tools:
 - `sympy_eval`
 - `sympy_simplify`
 
+## Practical mode and pure mode
+
+The EML tools support two styles of use:
+
+- **practical mode** — the default mode for compact expressions and straightforward evaluation
+- **pure mode** — an opt-in mode, requested with `pure: true`, for inspecting a stricter EML-style constant construction
+
+In pure mode, numeric constants are rewritten into EML structures based on the distinguished constant `1`. This is useful when you want to inspect the structural form rather than just the shortest practical representation.
+
 ## When to use EML tools
 
 Use the EML tools when you want the model to:
 
 - rewrite a standard expression into EML (Exp-Minus-Log) form
 - create an explicit EML tree from an infix mathematical expression using `eml_compile`
+- create a pure-mode EML tree for stricter structural inspection
 - inspect an intermediate symbolic representation before further analysis
 - evaluate the EML form numerically at chosen bindings
 - simplify and normalise the EML tree
@@ -39,10 +50,25 @@ Use the EML tools when you want the model to:
 ### Typical EML workflow
 
 1. `eml_compile` to create the EML tree from a standard expression
-2. `eml_simplify` to reduce or normalise the tree
-3. `eml_eval` to evaluate the EML expression numerically
-4. `eml_stability_check` to inspect branch, overflow, and conditioning risks
-5. `eml_fit` when working from data rather than from a known closed form
+2. optionally rerun `eml_compile` with `pure: true` for structural inspection
+3. `eml_simplify` to reduce or normalise the tree
+4. `eml_eval` to evaluate the EML expression numerically
+5. `eml_stability_check` to inspect branch, overflow, and conditioning risks
+6. `eml_fit` when working from data rather than from a known closed form
+
+## When to use pure mode
+
+Use pure mode when you want to:
+
+- inspect how constants are represented using the distinguished constant `1`
+- compare a practical tree with a stricter EML-style constant tree
+- preserve a more paper-like EML structure during compilation and simplification
+- analyse leaf structure using the returned `leaf_analysis`
+
+Typical pure-mode example:
+- compile `pi + e + 1/2` with `pure: true`
+- inspect the returned `leaf_analysis`
+- compare that result with the practical compile output
 
 ## When to use SymPy tools
 
@@ -66,6 +92,12 @@ Use the SymPy tools when you want:
 - Compile `sin(x)**2 + cos(x)**2` into an EML tree and show the result.
 - Create the EML tree for `sqrt(a^2 + b^2)` and explain the major steps in the translation.
 - Convert `exp(x) + log(x) + cos(x)` into EML form and describe the resulting tree structure.
+
+### Create a pure-mode EML tree
+
+- Compile `pi + e + 1/2` into a pure-mode EML tree and show the leaf analysis.
+- Compare the practical and pure-mode EML trees for `pi + e + 1/2`.
+- Compile a constant-heavy expression in pure mode and explain how the constants reduce to the distinguished constant `1`.
 
 ### Rewrite and simplify in EML
 
@@ -110,6 +142,13 @@ Use the SymPy tools when you want:
 1. `eml_eval`
 2. `sympy_eval`
 
+### Pure-mode structural comparison
+
+1. `eml_compile`
+2. `eml_compile` with `pure: true`
+3. inspect `leaf_analysis`
+4. compare the two tree styles
+
 ### Stability-aware fitting
 
 1. `eml_fit`
@@ -121,5 +160,6 @@ Use the SymPy tools when you want:
 - EML is useful when you want an explicit, inspectable symbolic form.
 - Creating the EML tree is often the most informative first step, because it exposes the structure that later simplification and evaluation operate on.
 - In this slim edition, tree creation is handled by `eml_compile`; there is no separate standalone tree tool.
+- Pure mode is most useful for structural inspection, not for the shortest or fastest representation.
 - SymPy is useful when you want a conventional algebra baseline.
 - The most informative behaviour often comes from using both together.

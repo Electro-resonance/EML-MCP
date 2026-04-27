@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document explains how to run tests against the text-based MCP server and how to call the same server from other Python code.
+This document explains how to run tests against the MCP server and how to call the same server from other Python code.
 
 ## Quick start
 
@@ -12,11 +12,11 @@ From the project directory:
 python eml_mcp_server.py test
 ```
 
-This launches the server as a subprocess, connects to it over stdio using framed JSON-RPC messages, and runs the built-in regression suite.
+This launches the server as a subprocess, connects to it over stdio using the official MCP Python SDK, and runs the built-in regression suite.
 
 ## Other run modes
 
-### Start the text MCP server only
+### Start the MCP server only
 
 ```bash
 python eml_mcp_server.py server
@@ -40,6 +40,8 @@ The regression suite currently checks:
 
 - the exposed tool surface from `tools/list`
 - `eml_compile` on a classic trigonometric identity
+- `eml_compile` in pure mode on `pi + e + 1/2`
+- pure-mode leaf analysis for the distinguished constant `1`
 - `eml_simplify` on `sin(x)^2 + cos(x)^2`
 - `eml_eval` on `sqrt(a^2 + b^2)`
 - `eml_stability_check` on `log(x)` over a risky region
@@ -68,67 +70,72 @@ python eml_mcp_server.py test > test_output.txt 2> test_error.txt
 python eml_mcp_server.py test > test_full_output.txt 2>&1
 ```
 
-## Calling the text MCP server from Python
+## Calling the MCP server from Python
 
-The text-based transport uses stdio plus `Content-Length` framing. A second Python program can therefore launch the server as a subprocess and talk JSON-RPC to it.
+The server uses the official MCP Python SDK over stdio. A second Python program can launch the server as a subprocess and communicate with it through an MCP client session.
 
-### Minimal subprocess example
+### Minimal official SDK example
 
 ```python
-import json
-import subprocess
+import asyncio
+from mcp.client.session import ClientSession
+from mcp.client.stdio import StdioServerParameters, stdio_client
 
 
-def write_framed(stream, payload):
-    body = json.dumps(payload).encode("utf-8")
-    header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
-    stream.write(header)
-    stream.write(body)
-    stream.flush()
+async def main():
+    params = StdioServerParameters(
+        command="python",
+        args=["eml_mcp_server.py", "server"],
+    )
+
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+
+            tools = await session.list_tools()
+            print(tools)
+
+            result = await session.call_tool(
+                "eml_eval",
+                {
+                    "expr": "sqrt(a^2 + b^2)",
+                    "bindings": {"a": 3, "b": 4},
+                },
+            )
+            print(result)
+
+asyncio.run(main())
+```
+
+### Pure-mode call example
+
+```python
+import asyncio
+from mcp.client.session import ClientSession
+from mcp.client.stdio import StdioServerParameters, stdio_client
 
 
-def read_framed(stream):
-    headers = {}
-    while True:
-        line = stream.readline()
-        if not line:
-            return None
-        if line in (b"\r\n", b"\n"):
-            break
-        key, value = line.decode("ascii").split(":", 1)
-        headers[key.strip().lower()] = value.strip()
-    length = int(headers["content-length"])
-    return json.loads(stream.read(length).decode("utf-8"))
+async def main():
+    params = StdioServerParameters(
+        command="python",
+        args=["eml_mcp_server.py", "server"],
+    )
 
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
 
-proc = subprocess.Popen(
-    ["python", "eml_mcp_server.py", "server"],
-    stdin=subprocess.PIPE,
-    stdout=subprocess.PIPE,
-    stderr=subprocess.PIPE,
-)
+            result = await session.call_tool(
+                "eml_compile",
+                {
+                    "target_expr": "pi + e + 1/2",
+                    "simplify": False,
+                    "pure": True,
+                },
+            )
+            print(result)
 
-write_framed(proc.stdin, {
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "initialize",
-    "params": {"clientInfo": {"name": "demo-client", "version": "1.0"}},
-})
-print(read_framed(proc.stdout))
-
-write_framed(proc.stdin, {
-    "jsonrpc": "2.0",
-    "id": 2,
-    "method": "tools/call",
-    "params": {
-        "name": "eml_eval",
-        "arguments": {
-            "expr": "sqrt(a^2 + b^2)",
-            "bindings": {"a": 3, "b": 4},
-        },
-    },
-})
-print(read_framed(proc.stdout))
+asyncio.run(main())
 ```
 
 ## Calling the underlying Python functions directly
@@ -143,6 +150,13 @@ compiled = tool_eml_compile({
     "simplify": True,
 })
 print(compiled["simplified_eml_expression"])
+
+pure_compiled = tool_eml_compile({
+    "target_expr": "pi + e + 1/2",
+    "simplify": False,
+    "pure": True,
+})
+print(pure_compiled["leaf_analysis"])
 
 value = tool_eml_eval({
     "expr": "sqrt(a^2 + b^2)",
@@ -163,6 +177,7 @@ print(sym["simplified"])
 Use `pytest` or `unittest` to check:
 
 - that `eml_compile` returns a non-empty tree
+- that pure-mode compile reports the expected leaf analysis
 - that `eml_eval` and `sympy_eval` agree on simple benchmark expressions
 - that `eml_stability_check` warns for `log(x)` near zero
 - that `eml_fit` returns a high `r2` on known synthetic datasets
@@ -175,10 +190,11 @@ Useful benchmark expressions include:
 - `sqrt(a^2 + b^2)`
 - `exp(x) + log(x) + cos(x)`
 - `sin(x) + log(x)`
+- `pi + e + 1/2` in pure mode
 
 ## Future test ideas
 
 - add more regression cases for inverse and hyperbolic functions
-- add golden-file snapshots for example outputs
+- add golden-file snapshots for pure-mode example outputs
 - add tolerance-based comparison between EML and SymPy across parameter sweeps
 - add CI automation so every commit runs the slim harness

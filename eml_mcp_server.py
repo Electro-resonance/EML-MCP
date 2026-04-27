@@ -49,6 +49,9 @@ Notes
 - The symbolic regression tool is heuristic. It searches a library of compact
   candidate templates, fits parameters, compiles the best result to EML, and
   returns the ranking.
+- A pure mode is available during compilation to rewrite numeric constants into
+  trees constructed from the distinguished constant 1 and the EML operator.
+  Variables remain as variable leaves.
 """
 
 from __future__ import annotations
@@ -74,6 +77,7 @@ import traceback
 from collections import OrderedDict
 from dataclasses import dataclass
 from functools import lru_cache
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -376,14 +380,23 @@ z_sym = sp.Symbol("z")
 
 
 class EMLCompiler:
-    """Practical compiler from a useful SymPy subset to EML trees."""
+    """Practical compiler from a useful SymPy subset to EML trees.
 
-    def __init__(self) -> None:
+    In default mode the compiler keeps numeric literals and selected constants as
+    direct leaves for practicality. In pure mode it rewrites those constants into
+    trees built from the distinguished constant 1 and the EML operator, while
+    variables remain variable leaves.
+    """
+
+    def __init__(self, pure_mode: bool = False) -> None:
         self.symbol_cache: Dict[str, EMLExpr] = {}
+        self.pure_mode = pure_mode
+        self._pure_constant_cache: Dict[str, EMLExpr] = {}
 
-    def compile_text(self, expr_text: str) -> EMLExpr:
+    def compile_text(self, expr_text: str, pure: Optional[bool] = None) -> EMLExpr:
         """Parse ordinary infix maths, simplify it with SymPy, then lower to EML."""
-        key = stable_key("compile_text", expr_text)
+        use_pure = self.pure_mode if pure is None else bool(pure)
+        key = stable_key("compile_text", expr_text, use_pure)
         cached = compile_cache.get(key)
         if cached is not None:
             return cached
@@ -392,103 +405,201 @@ class EMLCompiler:
             sp.parsing.sympy_parser.implicit_multiplication_application,
             sp.parsing.sympy_parser.convert_xor,
         )
-        expr = sp.parsing.sympy_parser.parse_expr(expr_text, transformations=transformations, evaluate=True)
-        compiled = self.compile_sympy(sp.simplify(expr))
+        expr = sp.parsing.sympy_parser.parse_expr(
+            expr_text,
+            transformations=transformations,
+            local_dict={'e': sp.E, 'E': sp.E, 'pi': sp.pi, 'π': sp.pi, 'I': sp.I},
+            evaluate=True,
+        )
+        compiled = self.compile_sympy(sp.simplify(expr), pure=use_pure)
         compile_cache.set(key, compiled)
         return compiled
 
-    def compile_sympy(self, expr: sp.Expr) -> EMLExpr:
-        """Lower a SymPy expression tree into the practical EML basis."""
+    def compile_sympy(self, expr: sp.Expr, pure: Optional[bool] = None) -> EMLExpr:
+        """Lower a SymPy expression tree into either practical or pure EML."""
+        use_pure = self.pure_mode if pure is None else bool(pure)
         if expr == sp.E:
-            return E_CONST
+            return self.e_const() if use_pure else E_CONST
         if expr == sp.pi:
-            return PI
+            return self.pi_const() if use_pure else PI
         if expr == sp.I:
-            return I_UNIT
+            return self.i_unit() if use_pure else I_UNIT
         if expr.is_Number:
-            return lit(complex(expr.evalf()))
+            return self.number_literal(expr, pure=use_pure)
         if expr.is_Symbol:
             name = str(expr)
             if name not in self.symbol_cache:
                 self.symbol_cache[name] = var(name)
             return self.symbol_cache[name]
         if isinstance(expr, sp.Add):
-            args = [self.compile_sympy(a) for a in expr.args]
+            args = [self.compile_sympy(a, pure=use_pure) for a in expr.args]
             out = args[0]
             for arg in args[1:]:
                 out = self.add(out, arg)
             return out
         if isinstance(expr, sp.Mul):
-            args = [self.compile_sympy(a) for a in expr.args]
+            args = [self.compile_sympy(a, pure=use_pure) for a in expr.args]
             out = args[0]
             for arg in args[1:]:
                 out = self.mul(out, arg)
             return out
         if isinstance(expr, sp.Pow):
             base, exponent = expr.args
-            return self.pow(self.compile_sympy(base), self.compile_sympy(exponent))
+            return self.pow(self.compile_sympy(base, pure=use_pure), self.compile_sympy(exponent, pure=use_pure))
         if expr.func == sp.exp:
-            return self.exp(self.compile_sympy(expr.args[0]))
+            return self.exp(self.compile_sympy(expr.args[0], pure=use_pure))
         if expr.func == sp.log:
             if len(expr.args) == 1:
-                return self.log(self.compile_sympy(expr.args[0]))
-            return self.div(self.log(self.compile_sympy(expr.args[0])), self.log(self.compile_sympy(expr.args[1])))
+                return self.log(self.compile_sympy(expr.args[0], pure=use_pure))
+            return self.div(self.log(self.compile_sympy(expr.args[0], pure=use_pure)), self.log(self.compile_sympy(expr.args[1], pure=use_pure)))
         if expr.func == sp.sqrt:
-            return self.sqrt(self.compile_sympy(expr.args[0]))
+            return self.sqrt(self.compile_sympy(expr.args[0], pure=use_pure))
         if expr.func == sp.sin:
-            return self.sin(self.compile_sympy(expr.args[0]))
+            return self.sin(self.compile_sympy(expr.args[0], pure=use_pure))
         if expr.func == sp.cos:
-            return self.cos(self.compile_sympy(expr.args[0]))
+            return self.cos(self.compile_sympy(expr.args[0], pure=use_pure))
         if expr.func == sp.tan:
-            return self.tan(self.compile_sympy(expr.args[0]))
+            return self.tan(self.compile_sympy(expr.args[0], pure=use_pure))
         if expr.func == sp.asin:
-            return self.asin(self.compile_sympy(expr.args[0]))
+            return self.asin(self.compile_sympy(expr.args[0], pure=use_pure))
         if expr.func == sp.acos:
-            return self.acos(self.compile_sympy(expr.args[0]))
+            return self.acos(self.compile_sympy(expr.args[0], pure=use_pure))
         if expr.func == sp.atan:
-            return self.atan(self.compile_sympy(expr.args[0]))
+            return self.atan(self.compile_sympy(expr.args[0], pure=use_pure))
         if expr.func == sp.sinh:
-            return self.sinh(self.compile_sympy(expr.args[0]))
+            return self.sinh(self.compile_sympy(expr.args[0], pure=use_pure))
         if expr.func == sp.cosh:
-            return self.cosh(self.compile_sympy(expr.args[0]))
+            return self.cosh(self.compile_sympy(expr.args[0], pure=use_pure))
         if expr.func == sp.tanh:
-            return self.tanh(self.compile_sympy(expr.args[0]))
+            return self.tanh(self.compile_sympy(expr.args[0], pure=use_pure))
         if expr.func == sp.asinh:
-            return self.asinh(self.compile_sympy(expr.args[0]))
+            return self.asinh(self.compile_sympy(expr.args[0], pure=use_pure))
         if expr.func == sp.acosh:
-            return self.acosh(self.compile_sympy(expr.args[0]))
+            return self.acosh(self.compile_sympy(expr.args[0], pure=use_pure))
         if expr.func == sp.atanh:
-            return self.atanh(self.compile_sympy(expr.args[0]))
+            return self.atanh(self.compile_sympy(expr.args[0], pure=use_pure))
         if expr.func == sp.Abs:
-            # Practical extension: |x| = sqrt(x^2)
-            return self.sqrt(self.mul(self.compile_sympy(expr.args[0]), self.compile_sympy(expr.args[0])))
+            return self.sqrt(self.mul(self.compile_sympy(expr.args[0], pure=use_pure), self.compile_sympy(expr.args[0], pure=use_pure)))
         if expr.func == sp.sign:
             raise ValueError("sign() is not supported by this practical EML compiler")
         raise ValueError(f"Unsupported SymPy expression/function: {expr.func} ({expr!s})")
+
+    # --- Pure-mode constant construction ---
+
+    def one(self) -> EMLExpr:
+        return ONE
+
+    def zero(self) -> EMLExpr:
+        if not self.pure_mode:
+            return ZERO
+        if 'zero' not in self._pure_constant_cache:
+            self._pure_constant_cache['zero'] = eml(self.one(), eml(eml(self.one(), self.one()), self.one()))
+        return self._pure_constant_cache['zero']
+
+    def neg_one(self) -> EMLExpr:
+        if not self.pure_mode:
+            return NEG_ONE
+        if 'neg_one' not in self._pure_constant_cache:
+            self._pure_constant_cache['neg_one'] = self.sub(self.zero(), self.one())
+        return self._pure_constant_cache['neg_one']
+
+    def two(self) -> EMLExpr:
+        if not self.pure_mode:
+            return TWO
+        if 'two' not in self._pure_constant_cache:
+            self._pure_constant_cache['two'] = self.add(self.one(), self.one())
+        return self._pure_constant_cache['two']
+
+    def half(self) -> EMLExpr:
+        if not self.pure_mode:
+            return HALF
+        if 'half' not in self._pure_constant_cache:
+            self._pure_constant_cache['half'] = self.div(self.one(), self.two())
+        return self._pure_constant_cache['half']
+
+    def i_unit(self) -> EMLExpr:
+        if not self.pure_mode:
+            return I_UNIT
+        if 'i' not in self._pure_constant_cache:
+            self._pure_constant_cache['i'] = self.sqrt(self.neg_one())
+        return self._pure_constant_cache['i']
+
+    def e_const(self) -> EMLExpr:
+        if not self.pure_mode:
+            return E_CONST
+        if 'e' not in self._pure_constant_cache:
+            self._pure_constant_cache['e'] = self.exp(self.one())
+        return self._pure_constant_cache['e']
+
+    def pi_const(self) -> EMLExpr:
+        if not self.pure_mode:
+            return PI
+        if 'pi' not in self._pure_constant_cache:
+            self._pure_constant_cache['pi'] = self.mul(self.from_integer(4), self.atan(self.one()))
+        return self._pure_constant_cache['pi']
+
+    def from_integer(self, n: int) -> EMLExpr:
+        if not self.pure_mode:
+            return lit(n)
+        key = f'int:{n}'
+        if key in self._pure_constant_cache:
+            return self._pure_constant_cache[key]
+        if n == 1:
+            out = self.one()
+        elif n == 0:
+            out = self.zero()
+        elif n < 0:
+            out = self.sub(self.zero(), self.from_integer(-n))
+        else:
+            out = self.one()
+            for _ in range(1, n):
+                out = self.add(out, self.one())
+        self._pure_constant_cache[key] = out
+        return out
+
+    def from_fraction(self, frac: Fraction) -> EMLExpr:
+        if not self.pure_mode:
+            return lit(frac.numerator / frac.denominator)
+        frac = Fraction(frac.numerator, frac.denominator)
+        key = f'frac:{frac.numerator}/{frac.denominator}'
+        if key in self._pure_constant_cache:
+            return self._pure_constant_cache[key]
+        num = self.from_integer(frac.numerator)
+        den = self.from_integer(frac.denominator)
+        out = self.div(num, den)
+        self._pure_constant_cache[key] = out
+        return out
+
+    def number_literal(self, expr: sp.Expr, pure: bool = False) -> EMLExpr:
+        if not pure:
+            return lit(complex(expr.evalf()))
+        cval = complex(expr.evalf(50))
+        if abs(cval.imag) < 1e-15:
+            frac = Fraction(str(float(cval.real))).limit_denominator(1000000)
+            return self.from_fraction(frac)
+        real_part = self.number_literal(sp.Float(cval.real), pure=True)
+        imag_part = self.number_literal(sp.Float(cval.imag), pure=True)
+        return self.add(real_part, self.mul(imag_part, self.i_unit()))
 
     # --- Core EML primitives and helper algebra ---
 
     def exp(self, a: EMLExpr) -> EMLExpr:
         """Construct `exp(a)` in EML form."""
-        return eml(a, ONE)
+        return eml(a, self.one())
 
     def log(self, a: EMLExpr) -> EMLExpr:
         """Construct `log(a)` in EML form using the practical encoding used here."""
-        # Practical special-case for log(0) using extended-real behavior.
         if a.op == "lit" and abs(complex(a.value)) == 0:
             return lit(complex(float("-inf"), 0.0))
-        # ln(x) = eml(1, eml(eml(1, x), 1))
-        return eml(ONE, eml(eml(ONE, a), ONE))
+        return eml(self.one(), eml(eml(self.one(), a), self.one()))
 
     def sub(self, a: EMLExpr, b: EMLExpr) -> EMLExpr:
         """Construct `a - b` in EML form."""
-        # a - b = eml(ln(a), exp(b))
         return eml(self.log(a), self.exp(b))
 
     def neg(self, a: EMLExpr) -> EMLExpr:
         """Construct `-a` in EML form."""
-        # -a = 0 - a, using extended-real log(0) = -inf behavior.
-        return self.sub(ZERO, a)
+        return self.sub(self.zero(), a)
 
     def add(self, a: EMLExpr, b: EMLExpr) -> EMLExpr:
         """Construct `a + b` in EML form."""
@@ -508,20 +619,20 @@ class EMLCompiler:
 
     def sqrt(self, a: EMLExpr) -> EMLExpr:
         """Construct `sqrt(a)` in EML form."""
-        return self.pow(a, HALF)
+        return self.pow(a, self.half())
 
     def sin(self, a: EMLExpr) -> EMLExpr:
         """Construct `sin(a)` in EML form via exponential identities."""
-        ia = self.mul(I_UNIT, a)
+        ia = self.mul(self.i_unit(), a)
         num = self.sub(self.exp(ia), self.exp(self.neg(ia)))
-        den = self.mul(TWO, I_UNIT)
+        den = self.mul(self.two(), self.i_unit())
         return self.div(num, den)
 
     def cos(self, a: EMLExpr) -> EMLExpr:
         """Construct `cos(a)` in EML form via exponential identities."""
-        ia = self.mul(I_UNIT, a)
+        ia = self.mul(self.i_unit(), a)
         num = self.add(self.exp(ia), self.exp(self.neg(ia)))
-        return self.div(num, TWO)
+        return self.div(num, self.two())
 
     def tan(self, a: EMLExpr) -> EMLExpr:
         """Construct `tan(a)` in EML form."""
@@ -530,12 +641,12 @@ class EMLCompiler:
     def sinh(self, a: EMLExpr) -> EMLExpr:
         """Construct `sinh(a)` in EML form."""
         num = self.sub(self.exp(a), self.exp(self.neg(a)))
-        return self.div(num, TWO)
+        return self.div(num, self.two())
 
     def cosh(self, a: EMLExpr) -> EMLExpr:
         """Construct `cosh(a)` in EML form."""
         num = self.add(self.exp(a), self.exp(self.neg(a)))
-        return self.div(num, TWO)
+        return self.div(num, self.two())
 
     def tanh(self, a: EMLExpr) -> EMLExpr:
         """Construct `tanh(a)` in EML form."""
@@ -543,37 +654,39 @@ class EMLCompiler:
 
     def asin(self, a: EMLExpr) -> EMLExpr:
         """Construct `asin(a)` in EML form."""
-        inner = self.add(self.mul(I_UNIT, a), self.sqrt(self.sub(ONE, self.mul(a, a))))
-        return self.mul(self.neg(I_UNIT), self.log(inner))
+        inner = self.add(self.mul(self.i_unit(), a), self.sqrt(self.sub(self.one(), self.mul(a, a))))
+        return self.mul(self.neg(self.i_unit()), self.log(inner))
 
     def acos(self, a: EMLExpr) -> EMLExpr:
         """Construct `acos(a)` in EML form."""
-        inner = self.add(a, self.mul(I_UNIT, self.sqrt(self.sub(ONE, self.mul(a, a)))))
-        return self.mul(self.neg(I_UNIT), self.log(inner))
+        inner = self.add(a, self.mul(self.i_unit(), self.sqrt(self.sub(self.one(), self.mul(a, a)))))
+        return self.mul(self.neg(self.i_unit()), self.log(inner))
 
     def atan(self, a: EMLExpr) -> EMLExpr:
         """Construct `atan(a)` in EML form."""
-        left = self.log(self.sub(ONE, self.mul(I_UNIT, a)))
-        right = self.log(self.add(ONE, self.mul(I_UNIT, a)))
+        left = self.log(self.sub(self.one(), self.mul(self.i_unit(), a)))
+        right = self.log(self.add(self.one(), self.mul(self.i_unit(), a)))
         diff = self.sub(left, right)
-        return self.mul(self.div(I_UNIT, TWO), diff)
+        return self.mul(self.div(self.i_unit(), self.two()), diff)
 
     def asinh(self, a: EMLExpr) -> EMLExpr:
         """Construct `asinh(a)` in EML form."""
-        return self.log(self.add(a, self.sqrt(self.add(self.mul(a, a), ONE))))
+        return self.log(self.add(a, self.sqrt(self.add(self.mul(a, a), self.one()))))
 
     def acosh(self, a: EMLExpr) -> EMLExpr:
         """Construct `acosh(a)` in EML form."""
-        part = self.mul(self.sqrt(self.sub(a, ONE)), self.sqrt(self.add(a, ONE)))
+        part = self.mul(self.sqrt(self.sub(a, self.one())), self.sqrt(self.add(a, self.one())))
         return self.log(self.add(a, part))
 
     def atanh(self, a: EMLExpr) -> EMLExpr:
         """Construct `atanh(a)` in EML form."""
-        num = self.log(self.div(self.add(ONE, a), self.sub(ONE, a)))
-        return self.mul(HALF, num)
+        num = self.log(self.div(self.add(self.one(), a), self.sub(self.one(), a)))
+        return self.mul(self.half(), num)
 
 
-COMPILER = EMLCompiler()
+COMPILER = EMLCompiler(pure_mode=False)
+PURE_COMPILER = EMLCompiler(pure_mode=True)
+
 
 
 # -----------------------------------------------------------------------------
@@ -651,12 +764,40 @@ def simplify_expr(expr: EMLExpr) -> EMLExpr:
     return out
 
 
-def expr_from_auto(text: str) -> Tuple[EMLExpr, str]:
+def expr_from_auto(text: str, pure: bool = False) -> Tuple[EMLExpr, str]:
     """Detect whether input is literal EML or infix maths and return both forms."""
     stripped = text.strip()
     if stripped.startswith("eml("):
         return parse_eml_expr(stripped), "eml"
-    return COMPILER.compile_text(stripped), "infix"
+    compiler = PURE_COMPILER if pure else COMPILER
+    return compiler.compile_text(stripped), "infix"
+
+
+def analyse_tree_leaves(expr: EMLExpr) -> Dict[str, Any]:
+    """Summarise literal and variable leaves, useful for pure-mode inspection."""
+    literals: List[complex] = []
+    variables: List[str] = []
+
+    def walk(node: EMLExpr) -> None:
+        if node.op == "lit":
+            literals.append(complex(node.value))
+            return
+        if node.op == "var":
+            variables.append(str(node.value))
+            return
+        walk(node.left)
+        walk(node.right)
+
+    walk(expr)
+    non_one_literals = [v for v in literals if abs(v - 1) > 1e-12]
+    return {
+        "literal_count": len(literals),
+        "variable_count": len(variables),
+        "variables": sorted(set(variables)),
+        "non_one_literal_count": len(non_one_literals),
+        "non_one_literals": [number_to_jsonable(v) for v in non_one_literals[:16]],
+        "is_one_only_constant_tree": len(non_one_literals) == 0,
+    }
 
 
 # -----------------------------------------------------------------------------
@@ -892,8 +1033,10 @@ def eml_fit(x_values: Sequence[Any], y_values: Sequence[Any], families: Optional
 def tool_eml_compile(arguments: Dict[str, Any]) -> Dict[str, Any]:
     """MCP tool wrapper for compiling ordinary maths into an EML tree."""
     expr_text = str(arguments["target_expr"])
-    expr = COMPILER.compile_text(expr_text)
-    simplified = simplify_expr(expr) if arguments.get("simplify", True) else expr
+    pure = bool(arguments.get("pure", False))
+    compiler = PURE_COMPILER if pure else COMPILER
+    expr = compiler.compile_text(expr_text)
+    simplified = expr if pure and arguments.get("simplify", True) else (simplify_expr(expr) if arguments.get("simplify", True) else expr)
     return {
         "source_expression": expr_text,
         "eml_expression": expr.to_prefix(),
@@ -901,6 +1044,8 @@ def tool_eml_compile(arguments: Dict[str, Any]) -> Dict[str, Any]:
         "tree": expr.to_dict(),
         "node_count": expr.node_count(),
         "depth": expr.depth(),
+        "pure_mode": pure,
+        "leaf_analysis": analyse_tree_leaves(expr),
     }
 
 
@@ -908,7 +1053,8 @@ def tool_eml_eval(arguments: Dict[str, Any]) -> Dict[str, Any]:
     """MCP tool wrapper for evaluating either EML or infix expressions."""
     expr_text = str(arguments["expr"])
     bindings = dict(arguments.get("bindings", {}))
-    expr, mode = expr_from_auto(expr_text)
+    pure = bool(arguments.get("pure", False))
+    expr, mode = expr_from_auto(expr_text, pure=pure)
     value = evaluate_expr(expr, bindings)
     return {
         "mode": mode,
@@ -916,15 +1062,17 @@ def tool_eml_eval(arguments: Dict[str, Any]) -> Dict[str, Any]:
         "bindings": {k: number_to_jsonable(coerce_number(v)) for k, v in bindings.items()},
         "value": number_to_jsonable(value),
         "value_pretty": pretty_complex(value),
+        "pure_mode": pure,
     }
 
 
 def tool_eml_simplify(arguments: Dict[str, Any]) -> Dict[str, Any]:
     """MCP tool wrapper for EML simplification and size/depth reporting."""
     expr_text = str(arguments["expr"])
-    expr, mode = expr_from_auto(expr_text)
-    simplified = simplify_expr(expr)
-    return {
+    pure = bool(arguments.get("pure", False))
+    expr, mode = expr_from_auto(expr_text, pure=pure)
+    simplified = expr if pure else simplify_expr(expr)
+    result = {
         "mode": mode,
         "original": expr.to_prefix(),
         "simplified": simplified.to_prefix(),
@@ -932,7 +1080,11 @@ def tool_eml_simplify(arguments: Dict[str, Any]) -> Dict[str, Any]:
         "simplified_node_count": simplified.node_count(),
         "original_depth": expr.depth(),
         "simplified_depth": simplified.depth(),
+        "pure_mode": pure,
     }
+    if pure:
+        result["note"] = "Pure mode preserves 1-only constant construction, so literal constant folding is skipped."
+    return result
 
 
 def tool_eml_stability_check(arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -940,10 +1092,12 @@ def tool_eml_stability_check(arguments: Dict[str, Any]) -> Dict[str, Any]:
     expr_text = str(arguments["expr"])
     bindings = dict(arguments.get("bindings", {}))
     region = arguments.get("region")
-    expr, mode = expr_from_auto(expr_text)
+    pure = bool(arguments.get("pure", False))
+    expr, mode = expr_from_auto(expr_text, pure=pure)
     report = stability_check(expr, bindings=bindings, region=region)
     report["mode"] = mode
     report["expr"] = expr.to_prefix()
+    report["pure_mode"] = pure
     return report
 
 
@@ -953,7 +1107,11 @@ def tool_eml_fit(arguments: Dict[str, Any]) -> Dict[str, Any]:
     y_values = arguments["y_values"]
     families = arguments.get("families")
     top_k = int(arguments.get("top_k", 5))
+    pure = bool(arguments.get("pure", False))
     result = eml_fit(x_values, y_values, families=families, top_k=top_k)
+    if pure:
+        pure_expr = PURE_COMPILER.compile_text(result["best_formula"])
+        result["best_formula_eml_pure"] = pure_expr.to_prefix()
     best_expr = parse_eml_expr(result["best_formula_eml"])
     result["best_formula_stability"] = stability_check(best_expr, region={"x": {"min": float(min(x_values)), "max": float(max(x_values))}})
     return result
@@ -1089,10 +1247,10 @@ TOOL_HANDLERS: Dict[str, Callable[[Dict[str, Any]], Dict[str, Any]]] = {
 TOOL_DEFS: List[Dict[str, Any]] = [
     {
         'name': 'eml_compile',
-        'description': 'Compile a standard infix mathematical expression into an EML tree.',
+        'description': 'Compile a standard infix mathematical expression into an EML tree. Set pure=true to rewrite numeric constants into trees built from 1 and eml only.',
         'inputSchema': {
             'type': 'object',
-            'properties': {'target_expr': {'type': 'string'}, 'simplify': {'type': 'boolean'}},
+            'properties': {'target_expr': {'type': 'string'}, 'simplify': {'type': 'boolean'}, 'pure': {'type': 'boolean'}},
             'required': ['target_expr'],
         },
     },
@@ -1101,7 +1259,7 @@ TOOL_DEFS: List[Dict[str, Any]] = [
         'description': 'Evaluate an EML expression or a normal infix expression after compiling it to EML.',
         'inputSchema': {
             'type': 'object',
-            'properties': {'expr': {'type': 'string'}, 'bindings': {'type': 'object'}},
+            'properties': {'expr': {'type': 'string'}, 'bindings': {'type': 'object'}, 'pure': {'type': 'boolean'}},
             'required': ['expr'],
         },
     },
@@ -1110,7 +1268,7 @@ TOOL_DEFS: List[Dict[str, Any]] = [
         'description': 'Simplify an EML tree via constant folding and canonical rebuilding.',
         'inputSchema': {
             'type': 'object',
-            'properties': {'expr': {'type': 'string'}},
+            'properties': {'expr': {'type': 'string'}, 'pure': {'type': 'boolean'}},
             'required': ['expr'],
         },
     },
@@ -1119,7 +1277,7 @@ TOOL_DEFS: List[Dict[str, Any]] = [
         'description': 'Sample an EML expression and flag domain, branch-cut, overflow, and conditioning risks.',
         'inputSchema': {
             'type': 'object',
-            'properties': {'expr': {'type': 'string'}, 'bindings': {'type': 'object'}, 'region': {'type': 'object'}},
+            'properties': {'expr': {'type': 'string'}, 'bindings': {'type': 'object'}, 'region': {'type': 'object'}, 'pure': {'type': 'boolean'}},
             'required': ['expr'],
         },
     },
@@ -1133,6 +1291,7 @@ TOOL_DEFS: List[Dict[str, Any]] = [
                 'y_values': {'type': 'array', 'items': {'type': 'number'}},
                 'families': {'type': 'array', 'items': {'type': 'string'}},
                 'top_k': {'type': 'integer'},
+                'pure': {'type': 'boolean'},
             },
             'required': ['x_values', 'y_values'],
         },
@@ -1344,6 +1503,11 @@ def run_regression_suite(client: Any) -> Dict[str, Any]:
     compiled = _extract_structured_content(client.request('tools/call', {'name': _helper_exposed_name('eml_compile'), 'arguments': {'target_expr': 'sin(x)**2 + cos(x)**2', 'simplify': False}}))
     results.append({'name': 'eml_compile_returns_tree', 'pass': 'eml_expression' in compiled and compiled['node_count'] > 0, 'details': compiled})
 
+    pure_compiled = _extract_structured_content(client.request('tools/call', {'name': _helper_exposed_name('eml_compile'), 'arguments': {'target_expr': 'pi + e + 1/2', 'simplify': False, 'pure': True}}))
+    pure_leaf_analysis = pure_compiled.get('leaf_analysis', {})
+    pure_pass = pure_compiled.get('pure_mode') is True and pure_leaf_analysis.get('is_one_only_constant_tree') is True
+    results.append({'name': 'eml_compile_pure_mode_eliminates_named_constants', 'pass': pure_pass, 'details': pure_compiled})
+
     simplified = _extract_structured_content(client.request('tools/call', {'name': _helper_exposed_name('eml_simplify'), 'arguments': {'expr': 'sin(x)**2 + cos(x)**2'}}))
     results.append({'name': 'eml_simplify_trig_identity', 'pass': simplified['simplified'] in {'1', '1.0'}, 'details': simplified})
 
@@ -1434,10 +1598,14 @@ def run_direct_examples() -> int:
     y_vals = [float(np.log(v)) for v in x_vals]
     print(json.dumps(tool_eml_fit({'x_values': x_vals, 'y_values': y_vals, 'families': ['linear', 'log_affine', 'power_affine'], 'top_k': 3}), indent=2))
 
-    print('\n=== Example 5: cross-check an identity with SymPy ===')
+    print('\n=== Example 5: compile in pure mode ===')
+    pure_compiled = tool_eml_compile({'target_expr': 'pi + e + 1/2', 'simplify': False, 'pure': True})
+    print(json.dumps(pure_compiled, indent=2))
+
+    print('\n=== Example 6: cross-check an identity with SymPy ===')
     print(json.dumps(tool_sympy_simplify({'expr': 'sin(x)**2 + cos(x)**2'}), indent=2))
 
-    print('\n=== Example 6: direct SymPy evaluation with bindings ===')
+    print('\n=== Example 7: direct SymPy evaluation with bindings ===')
     print(json.dumps(tool_sympy_eval({'expr': 'sqrt(a^2 + b^2)', 'bindings': {'a': 8, 'b': 15}, 'digits': 30}), indent=2))
     return 0
 

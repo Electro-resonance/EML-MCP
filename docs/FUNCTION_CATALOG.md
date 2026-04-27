@@ -13,6 +13,7 @@ Use: Use when the LLM already has an EML expression or wants to evaluate an infi
 Arguments:
 - `expr` (string) required
 - `bindings` (object)
+- `pure` (boolean)
 
 Example call:
 ```json
@@ -41,6 +42,17 @@ Also useful for ordinary infix input:
 }
 ```
 
+Pure-mode example:
+```json
+{
+  "name": "eml_eval",
+  "arguments": {
+    "expr": "pi + e + 1/2",
+    "pure": true
+  }
+}
+```
+
 Related: `eml_compile`, `eml_simplify`, `eml_stability_check`, `sympy_eval`
 
 ### `eml_compile`
@@ -51,6 +63,7 @@ Use: Use when the LLM needs a normal expression translated into the EML basis be
 Arguments:
 - `target_expr` (string) required
 - `simplify` (boolean)
+- `pure` (boolean)
 
 Example call:
 ```json
@@ -74,6 +87,20 @@ Another semi-complex example:
 }
 ```
 
+Pure-mode constant example:
+```json
+{
+  "name": "eml_compile",
+  "arguments": {
+    "target_expr": "pi + e + 1/2",
+    "simplify": false,
+    "pure": true
+  }
+}
+```
+
+Pure mode is intended for structural inspection. In this mode the compile result also reports leaf analysis so you can inspect whether the constant leaves reduce to the distinguished constant `1`.
+
 Related: `eml_eval`, `eml_simplify`, `sympy_simplify`
 
 ### `eml_fit`
@@ -86,6 +113,7 @@ Arguments:
 - `y_values` (array) required
 - `families` (array)
 - `top_k` (integer)
+- `pure` (boolean)
 
 Example call:
 ```json
@@ -127,6 +155,8 @@ A simpler sanity-check dataset:
 }
 ```
 
+Pure-mode output can include an additional `best_formula_eml_pure` form for structural inspection.
+
 Related: `eml_compile`, `eml_stability_check`, `sympy_eval`
 
 ### `eml_simplify`
@@ -136,6 +166,7 @@ Use: Use when the LLM wants a cleaner canonical EML tree before comparing or exp
 
 Arguments:
 - `expr` (string) required
+- `pure` (boolean)
 
 Example call:
 ```json
@@ -157,6 +188,19 @@ Infix input is also accepted and auto-compiled:
 }
 ```
 
+Pure-mode example:
+```json
+{
+  "name": "eml_simplify",
+  "arguments": {
+    "expr": "pi + e + 1/2",
+    "pure": true
+  }
+}
+```
+
+In pure mode, simplification preserves the pure-style constant structure rather than collapsing the tree back to ordinary literals.
+
 Related: `eml_compile`, `eml_eval`, `sympy_simplify`
 
 ### `eml_stability_check`
@@ -168,6 +212,7 @@ Arguments:
 - `expr` (string) required
 - `bindings` (object)
 - `region` (object)
+- `pure` (boolean)
 
 Example call:
 ```json
@@ -197,6 +242,17 @@ A riskier example:
         "max": 1.0
       }
     }
+  }
+}
+```
+
+Pure-mode example:
+```json
+{
+  "name": "eml_stability_check",
+  "arguments": {
+    "expr": "pi + e + 1/2",
+    "pure": true
   }
 }
 ```
@@ -283,6 +339,12 @@ Related: `sympy_eval`, `eml_compile`, `eml_simplify`
 ### Numeric comparison
 - `eml_eval`
 - `sympy_eval`
+
+### Structural inspection with pure mode
+- `eml_compile` with `pure: true`
+- inspect `leaf_analysis`
+- `eml_simplify` with `pure: true`
+- optionally compare the same expression against the practical mode output
 
 ### Stability-aware fitting
 - `eml_fit`
