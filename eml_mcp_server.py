@@ -27,6 +27,12 @@ Why this file exists:
     * eml_stability_check
     * sympy_eval
     * sympy_simplify
+    * eml_family_library
+    * eml_extract_group_structure
+    * eml_recover_core_family
+    * eml_generate_from_addition_formula
+    * eml_constant_free_scan
+    * eml_explore_family
 
 Usage
 -----
@@ -1120,6 +1126,228 @@ def tool_eml_fit(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # -----------------------------------------------------------------------------
+# Generalized EML family tools (concise family surface)
+# -----------------------------------------------------------------------------
+
+EML_FAMILY_LIBRARY: Dict[str, Dict[str, Any]] = {
+    'original_eml': {
+        'display_name': 'Original EML',
+        'operator_formula': 'S(x, y) = exp(x) - ln(y)',
+        'f_name': 'exp', 'g_name': 'ln',
+        'neutral_element': '0', 'seed_constant': '1', 'seed_condition': 'ln(1)=0',
+        'group_law': 'A ⊞ B = A + B', 'inverse_map': 'ι(A) = -A',
+        'addition_formula': 'exp(x+y) = exp(x) exp(y)',
+        'derived_operations': ['multiplication', 'division', 'powers', 'trigonometric families'],
+        'recoverable_functions': ['exp', 'ln', 'subtraction', 'addition', 'multiplication', 'division', 'powers'],
+        'requires_external_constant': True, 'constant_free_candidate': False,
+        'notes': 'Canonical EML family from Odrzywołek, algebraically unpacked by Stachowiak.',
+        'limitations': ['Branch cuts and inverse-cancellation caveats remain through the logarithm.'],
+    },
+    'cosine_arccos': {
+        'display_name': 'Cosine / arccos family',
+        'operator_formula': 'S(x, y) = cos(x) - arccos(y)',
+        'f_name': 'cos', 'g_name': 'arccos',
+        'neutral_element': '0', 'seed_constant': '1', 'seed_condition': 'arccos(1)=0',
+        'group_law': 'A ⊞ B = A + B', 'inverse_map': 'ι(A) = -A',
+        'addition_formula': 'cos(a+b) + cos(a-b) = 2 cos(a) cos(b)',
+        'derived_operations': ['scaled multiplication F(x,y)=2xy', 'Chebyshev polynomials'],
+        'recoverable_functions': ['cos', 'arccos', 'addition', 'subtraction', 'sin via phase shift', 'Chebyshev polynomials'],
+        'requires_external_constant': True, 'constant_free_candidate': False,
+        'notes': 'Good family for trigonometric DSL generation.',
+        'limitations': ['Ordinary multiplication is not recovered without extra constants or operations.'],
+    },
+    'arccot_cot': {
+        'display_name': 'arccot / cot family',
+        'operator_formula': 'S(x, y) = arccot(x) - cot(y)',
+        'f_name': 'arccot', 'g_name': 'cot',
+        'neutral_element': '0', 'seed_constant': 'pi/2', 'seed_condition': 'cot(pi/2)=0',
+        'group_law': 'A ⊞ B = A + B', 'inverse_map': 'ι(A) = -A',
+        'addition_formula': 'tan(a+b) = (tan(a)+tan(b)) / (1 - tan(a) tan(b))',
+        'derived_operations': ['fractional-linear composition F(x,y)=(x+y)/(1-xy)', 'reciprocal 1/x'],
+        'recoverable_functions': ['arccot', 'cot', 'tan', 'reciprocal 1/x', 'addition', 'subtraction'],
+        'requires_external_constant': True, 'constant_free_candidate': False,
+        'notes': 'Illustrates a non-multiplicative addition law.',
+        'limitations': ['The recovered addition law does not directly yield ordinary multiplication.'],
+    },
+    'tanh_artanh': {
+        'display_name': 'tanh / artanh family',
+        'operator_formula': 'S(x, y) = tanh(x) - artanh(y)',
+        'f_name': 'tanh', 'g_name': 'artanh',
+        'neutral_element': '0', 'seed_constant': '0', 'seed_condition': 'artanh(0)=0',
+        'group_law': 'A ⊞ B = A + B', 'inverse_map': 'ι(A) = -A',
+        'addition_formula': 'tanh(a+b) = (tanh(a)+tanh(b)) / (1 + tanh(a) tanh(b))',
+        'derived_operations': ['relativistic velocity addition F(x,y)=(x+y)/(1+xy)'],
+        'recoverable_functions': ['tanh', 'artanh', 'addition', 'subtraction', 'Lorentz-boost-style composition'],
+        'requires_external_constant': True, 'constant_free_candidate': False,
+        'notes': 'Compact language for Lorentz-boost-style composition.',
+        'limitations': ['No direct route to ordinary multiplication in the recovered language.'],
+    },
+    'elliptic_pair': {
+        'display_name': 'Weierstrass elliptic pair',
+        'operator_formula': "S(z,t)=℘(z)-℘⁻¹(t), paired with R(z,t)=℘′(z)-(℘′)⁻¹(t)",
+        'f_name': "℘ and ℘′", 'g_name': 'formal inverses',
+        'neutral_element': '0', 'seed_constant': '∞', 'seed_condition': 'formal on a restricted subdomain',
+        'group_law': 'Elliptic-curve point addition P1 ⊞ P2 = P3', 'inverse_map': 'Point inversion on the elliptic curve',
+        'addition_formula': '℘(u+v) = Q(℘(u),℘(v),℘′(u),℘′(v)) with rational Q',
+        'derived_operations': ['elliptic-curve group law using a paired-operator language'],
+        'recoverable_functions': ['℘', '℘′', 'addition/subtraction on curve parameters', 'elliptic-curve point arithmetic'],
+        'requires_external_constant': True, 'constant_free_candidate': False,
+        'notes': 'Key multi-operator example from the follow-up paper.',
+        'limitations': ['Requires two coordinated operators and restricted domains.'],
+    },
+    'involutive_piecewise': {
+        'display_name': 'Involutive piecewise family',
+        'operator_formula': 'S(x, y) = f(x) - f(y) with a piecewise involution f(f(x))=x',
+        'f_name': 'piecewise involution', 'g_name': 'same as f',
+        'neutral_element': '0', 'seed_constant': '0', 'seed_condition': 'f(0)=0',
+        'group_law': 'A ⊞ B = A + B', 'inverse_map': 'ι(A) = -A',
+        'addition_formula': 'f(x+y) yields a bilinear ts+t+s structure on (-1,0)',
+        'derived_operations': ['restricted multiplication ts = f(f(s)+f(t)) - t - s on (-1,0)'],
+        'recoverable_functions': ['f', 'addition', 'subtraction', 'restricted-domain multiplication'],
+        'requires_external_constant': False, 'constant_free_candidate': True,
+        'notes': 'Strongest constant-free candidate discussed in the note.',
+        'limitations': ['Works only on a narrow domain and does not obviously recover division or universality.'],
+    },
+}
+
+
+def _get_eml_family_spec(name: str) -> Dict[str, Any]:
+    name = str(name).strip()
+    if name not in EML_FAMILY_LIBRARY:
+        raise KeyError(f'Unknown EML family: {name}')
+    return json.loads(json.dumps(EML_FAMILY_LIBRARY[name]))
+
+
+def tool_eml_family_library(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """List the built-in generalized EML families or inspect one family."""
+    family = arguments.get('family')
+    if family:
+        spec = _get_eml_family_spec(str(family))
+        spec['family'] = str(family)
+        return spec
+    return {
+        'families': [
+            {
+                'family': name,
+                'display_name': spec['display_name'],
+                'operator_formula': spec['operator_formula'],
+                'requires_external_constant': spec['requires_external_constant'],
+                'constant_free_candidate': spec['constant_free_candidate'],
+            }
+            for name, spec in EML_FAMILY_LIBRARY.items()
+        ],
+        'notes': [
+            'Curated family templates based on the algebraic-structure follow-up paper.',
+            'These tools expose the family metadata and symbolic recovery roadmap rather than proving arbitrary user-defined operators.',
+        ],
+    }
+
+
+def tool_eml_extract_group_structure(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """Expose the hidden abelian-group data behind a built-in generalized EML family."""
+    family = str(arguments['family'])
+    spec = _get_eml_family_spec(family)
+    return {
+        'family': family,
+        'display_name': spec['display_name'],
+        'operator_formula': spec['operator_formula'],
+        'neutral_element': spec['neutral_element'],
+        'inverse_map': spec['inverse_map'],
+        'group_law': spec['group_law'],
+        'axioms': {'neutral_element': True, 'self_cancellation': True, 'anti_associativity': True},
+        'notes': [
+            'Reports the symbolic group data associated with the chosen built-in family.',
+            'The follow-up paper shows that the subtraction-like M induces an abelian group through A ⊞ B := M(A, M(e, B)).',
+        ],
+        'limitations': spec['limitations'],
+    }
+
+
+def tool_eml_recover_core_family(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """Return the six-step constructive recovery chain from the follow-up paper."""
+    family = str(arguments['family'])
+    spec = _get_eml_family_spec(family)
+    f_name, g_name = spec['f_name'], spec['g_name']
+    steps = [
+        {'step': 1, 'name': 'recover_f', 'construction': 'S(x, c)', 'result': f'{f_name}(x)', 'note': f'Uses c={spec["seed_constant"]} with {spec["seed_condition"]}.'},
+        {'step': 2, 'name': 'recover_f_minus_y', 'construction': f'S(x, {f_name}(y))', 'result': f'{f_name}(x) ⊟ y', 'note': 'Feeds an already recovered f(y) back into the second argument.'},
+        {'step': 3, 'name': 'recover_inverse_g', 'construction': 'f2(z, S(z, x))', 'result': f'{g_name}(x)', 'note': 'Generic inverse-recovery step.'},
+        {'step': 4, 'name': 'recover_subtraction_like_operation', 'construction': f'S({g_name}(x), {f_name}(y))', 'result': 'x ⊟ y', 'note': 'Makes the underlying subtraction-like operation explicit.'},
+        {'step': 5, 'name': 'recover_inverse_map', 'construction': '(x ⊟ y) ⊟ x', 'result': spec['inverse_map'], 'note': 'Recovers the inverse map ι associated with the hidden group.'},
+        {'step': 6, 'name': 'recover_group_law', 'construction': 'x ⊟ ι(y)', 'result': spec['group_law'], 'note': 'Recovers the induced abelian-group law.'},
+    ]
+    return {
+        'family': family,
+        'display_name': spec['display_name'],
+        'seed_constant': spec['seed_constant'],
+        'seed_condition': spec['seed_condition'],
+        'steps': steps,
+        'recoverable_functions': spec['recoverable_functions'],
+        'notes': ['Symbolic roadmap for the built-in families rather than an arbitrary solver over user-defined operators.'],
+    }
+
+
+def tool_eml_generate_from_addition_formula(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """Report the family-specific addition formula and what it can generate."""
+    family = str(arguments['family'])
+    spec = _get_eml_family_spec(family)
+    return {
+        'family': family,
+        'display_name': spec['display_name'],
+        'addition_formula': spec['addition_formula'],
+        'derived_operations': spec['derived_operations'],
+        'recoverable_functions': spec['recoverable_functions'],
+        'limitations': spec['limitations'],
+        'notes': ['Different families generate different downstream operations: original EML reaches multiplication and powers, while others stop at narrower compositions.'],
+    }
+
+
+def tool_eml_constant_free_scan(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """Summarise constant-free candidates and the open constant-free question."""
+    candidates = [
+        {
+            'family': name,
+            'display_name': spec['display_name'],
+            'operator_formula': spec['operator_formula'],
+            'notes': spec['notes'],
+            'limitations': spec['limitations'],
+        }
+        for name, spec in EML_FAMILY_LIBRARY.items() if spec.get('constant_free_candidate')
+    ]
+    return {
+        'open_problem': True,
+        'question': 'Is there a single constant-free universal generator with the simplicity of EML?',
+        'constant_free_candidates': candidates,
+        'notes': [
+            'The follow-up paper leaves the constant-free universal generator question open.',
+            'This tool reports curated candidates and limitations rather than claiming to solve that open problem.',
+        ],
+    }
+
+
+def tool_eml_explore_family(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """Convenience aggregation of family metadata, group structure, recovery, and addition-law consequences."""
+    family = str(arguments['family'])
+    spec = _get_eml_family_spec(family)
+    return {
+        'family': family,
+        'display_name': spec['display_name'],
+        'operator_formula': spec['operator_formula'],
+        'group_structure': tool_eml_extract_group_structure({'family': family}),
+        'recovery_chain': tool_eml_recover_core_family({'family': family})['steps'],
+        'addition_formula': spec['addition_formula'],
+        'derived_operations': spec['derived_operations'],
+        'recoverable_functions': spec['recoverable_functions'],
+        'requires_external_constant': spec['requires_external_constant'],
+        'constant_free_candidate': spec['constant_free_candidate'],
+        'limitations': spec['limitations'],
+        'notes': ['Convenience view for LLM/tool use; packages the core structural ideas into one response.'],
+    }
+
+
+
+
+# -----------------------------------------------------------------------------
 # SymPy bridge (slim edition)
 # -----------------------------------------------------------------------------
 
@@ -1242,15 +1470,21 @@ TOOL_HANDLERS: Dict[str, Callable[[Dict[str, Any]], Dict[str, Any]]] = {
     'eml_fit': tool_eml_fit,
     'sympy_eval': tool_sympy_eval,
     'sympy_simplify': tool_sympy_simplify,
+    'eml_family_library': tool_eml_family_library,
+    'eml_extract_group_structure': tool_eml_extract_group_structure,
+    'eml_recover_core_family': tool_eml_recover_core_family,
+    'eml_generate_from_addition_formula': tool_eml_generate_from_addition_formula,
+    'eml_constant_free_scan': tool_eml_constant_free_scan,
+    'eml_explore_family': tool_eml_explore_family,
 }
 
 TOOL_DEFS: List[Dict[str, Any]] = [
     {
         'name': 'eml_compile',
-        'description': 'Compile a standard infix mathematical expression into an EML tree. Set pure=true to rewrite numeric constants into trees built from 1 and eml only.',
+        'description': 'Compile a standard infix mathematical expression into an EML tree.',
         'inputSchema': {
             'type': 'object',
-            'properties': {'target_expr': {'type': 'string'}, 'simplify': {'type': 'boolean'}, 'pure': {'type': 'boolean'}},
+            'properties': {'target_expr': {'type': 'string'}, 'simplify': {'type': 'boolean'}},
             'required': ['target_expr'],
         },
     },
@@ -1259,7 +1493,7 @@ TOOL_DEFS: List[Dict[str, Any]] = [
         'description': 'Evaluate an EML expression or a normal infix expression after compiling it to EML.',
         'inputSchema': {
             'type': 'object',
-            'properties': {'expr': {'type': 'string'}, 'bindings': {'type': 'object'}, 'pure': {'type': 'boolean'}},
+            'properties': {'expr': {'type': 'string'}, 'bindings': {'type': 'object'}},
             'required': ['expr'],
         },
     },
@@ -1268,7 +1502,7 @@ TOOL_DEFS: List[Dict[str, Any]] = [
         'description': 'Simplify an EML tree via constant folding and canonical rebuilding.',
         'inputSchema': {
             'type': 'object',
-            'properties': {'expr': {'type': 'string'}, 'pure': {'type': 'boolean'}},
+            'properties': {'expr': {'type': 'string'}},
             'required': ['expr'],
         },
     },
@@ -1277,7 +1511,7 @@ TOOL_DEFS: List[Dict[str, Any]] = [
         'description': 'Sample an EML expression and flag domain, branch-cut, overflow, and conditioning risks.',
         'inputSchema': {
             'type': 'object',
-            'properties': {'expr': {'type': 'string'}, 'bindings': {'type': 'object'}, 'region': {'type': 'object'}, 'pure': {'type': 'boolean'}},
+            'properties': {'expr': {'type': 'string'}, 'bindings': {'type': 'object'}, 'region': {'type': 'object'}},
             'required': ['expr'],
         },
     },
@@ -1291,7 +1525,6 @@ TOOL_DEFS: List[Dict[str, Any]] = [
                 'y_values': {'type': 'array', 'items': {'type': 'number'}},
                 'families': {'type': 'array', 'items': {'type': 'string'}},
                 'top_k': {'type': 'integer'},
-                'pure': {'type': 'boolean'},
             },
             'required': ['x_values', 'y_values'],
         },
@@ -1312,6 +1545,61 @@ TOOL_DEFS: List[Dict[str, Any]] = [
             'type': 'object',
             'properties': {'expr': {'type': 'string'}},
             'required': ['expr'],
+        },
+    },
+
+    {
+        'name': 'eml_family_library',
+        'description': 'List the built-in generalized EML families or inspect one family.',
+        'inputSchema': {
+            'type': 'object',
+            'properties': {'family': {'type': 'string'}},
+            'required': [],
+        },
+    },
+    {
+        'name': 'eml_extract_group_structure',
+        'description': 'Expose the hidden abelian-group data behind a built-in generalized EML family.',
+        'inputSchema': {
+            'type': 'object',
+            'properties': {'family': {'type': 'string'}},
+            'required': ['family'],
+        },
+    },
+    {
+        'name': 'eml_recover_core_family',
+        'description': 'Return the six-step constructive recovery chain for a built-in generalized EML family.',
+        'inputSchema': {
+            'type': 'object',
+            'properties': {'family': {'type': 'string'}},
+            'required': ['family'],
+        },
+    },
+    {
+        'name': 'eml_generate_from_addition_formula',
+        'description': 'Report the addition formula and derived operations for a built-in generalized EML family.',
+        'inputSchema': {
+            'type': 'object',
+            'properties': {'family': {'type': 'string'}},
+            'required': ['family'],
+        },
+    },
+    {
+        'name': 'eml_constant_free_scan',
+        'description': 'Summarise constant-free candidate families and the open constant-free question.',
+        'inputSchema': {
+            'type': 'object',
+            'properties': {},
+            'required': [],
+        },
+    },
+    {
+        'name': 'eml_explore_family',
+        'description': 'Convenience aggregation of family metadata, group structure, recovery, and addition-law consequences.',
+        'inputSchema': {
+            'type': 'object',
+            'properties': {'family': {'type': 'string'}},
+            'required': ['family'],
         },
     },
 ]
@@ -1497,7 +1785,7 @@ def run_regression_suite(client: Any) -> Dict[str, Any]:
     tools_resp = client.request('tools/list')
     tools = tools_resp['tools'] if isinstance(tools_resp, dict) and 'tools' in tools_resp else tools_resp
     names = {row['name'] for row in tools}
-    expected = {_helper_exposed_name(name) for name in {'eml_compile', 'eml_eval', 'eml_simplify', 'eml_stability_check', 'eml_fit', 'sympy_eval', 'sympy_simplify'}}
+    expected = {_helper_exposed_name(name) for name in {'eml_compile', 'eml_eval', 'eml_simplify', 'eml_stability_check', 'eml_fit', 'sympy_eval', 'sympy_simplify', 'eml_family_library', 'eml_extract_group_structure', 'eml_recover_core_family', 'eml_generate_from_addition_formula', 'eml_constant_free_scan', 'eml_explore_family'}}
     results.append({'name': 'tools_list_expected_surface', 'pass': names == expected, 'details': {'names': sorted(names)}})
 
     compiled = _extract_structured_content(client.request('tools/call', {'name': _helper_exposed_name('eml_compile'), 'arguments': {'target_expr': 'sin(x)**2 + cos(x)**2', 'simplify': False}}))
@@ -1537,6 +1825,18 @@ def run_regression_suite(client: Any) -> Dict[str, Any]:
 
     sym_e = _extract_structured_content(client.request('tools/call', {'name': _helper_exposed_name('sympy_eval'), 'arguments': {'expr': 'sqrt(a^2 + b^2)', 'bindings': {'a': 3, 'b': 4}, 'digits': 30}}))
     results.append(_assert_close('sympy_eval_pythagorean', float(sym_e['value']), 5.0))
+
+    fams = _extract_structured_content(client.request('tools/call', {'name': _helper_exposed_name('eml_family_library'), 'arguments': {}}))
+    fam_pass = any(row.get('family') == 'original_eml' for row in fams.get('families', []))
+    results.append({'name': 'eml_family_library_lists_original_eml', 'pass': fam_pass, 'details': fams})
+
+    group = _extract_structured_content(client.request('tools/call', {'name': _helper_exposed_name('eml_extract_group_structure'), 'arguments': {'family': 'original_eml'}}))
+    group_pass = group.get('group_law') == 'A ⊞ B = A + B' and group.get('axioms', {}).get('neutral_element') is True
+    results.append({'name': 'eml_extract_group_structure_original_eml', 'pass': group_pass, 'details': group})
+
+    cfree = _extract_structured_content(client.request('tools/call', {'name': _helper_exposed_name('eml_constant_free_scan'), 'arguments': {}}))
+    cfree_pass = cfree.get('open_problem') is True and len(cfree.get('constant_free_candidates', [])) >= 1
+    results.append({'name': 'eml_constant_free_scan_reports_candidate', 'pass': cfree_pass, 'details': cfree})
 
     passed = sum(1 for row in results if row['pass'])
     return {'total_cases': len(results), 'passed_cases': passed, 'failed_cases': len(results) - passed, 'all_passed': passed == len(results), 'results': results}
@@ -1607,6 +1907,18 @@ def run_direct_examples() -> int:
 
     print('\n=== Example 7: direct SymPy evaluation with bindings ===')
     print(json.dumps(tool_sympy_eval({'expr': 'sqrt(a^2 + b^2)', 'bindings': {'a': 8, 'b': 15}, 'digits': 30}), indent=2))
+
+    print('\n=== Example 8: list built-in generalized EML families ===')
+    print(json.dumps(tool_eml_family_library({}), indent=2))
+
+    print('\n=== Example 9: explore the original EML family ===')
+    print(json.dumps(tool_eml_explore_family({'family': 'original_eml'}), indent=2))
+
+    print('\n=== Example 10: generate from the tanh/artanh addition formula ===')
+    print(json.dumps(tool_eml_generate_from_addition_formula({'family': 'tanh_artanh'}), indent=2))
+
+    print('\n=== Example 11: scan constant-free candidates ===')
+    print(json.dumps(tool_eml_constant_free_scan({}), indent=2))
     return 0
 
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The EML-MCP server is organised into six layers.
+The EML-MCP server is organised into seven layers.
 
 ## 1. Expression core
 
@@ -54,7 +54,23 @@ Responsibilities:
 - optionally emit a pure-mode compiled form
 - run a follow-up stability pass on the fitted form
 
-## 5. SymPy bridge
+## 5. Family metadata and algebra layer
+
+This layer adds a compact curated representation of generalized EML families inspired by the follow-up algebraic-structure paper.
+
+Responsibilities:
+
+- store a built-in family library
+- expose operator metadata such as `S(x,y)` form, seed constant, neutral element, and inverse map
+- describe the induced abelian group law
+- encode the six-step recovery chain
+- report addition-formula-derived operations
+- summarise the constant-free open question and curated candidates
+
+This layer is intentionally metadata-driven and compact. It does not attempt arbitrary symbolic proof checking for user-defined operators.
+
+
+## 6. SymPy bridge
 
 The SymPy bridge provides a conventional symbolic algebra route.
 
@@ -64,7 +80,7 @@ Responsibilities:
 - evaluate expressions numerically with bindings and precision
 - act as a comparison baseline against the EML route
 
-## 6. MCP transport and harness
+## 7. MCP transport and harness
 
 The transport uses the official MCP Python SDK over stdio.
 The same file also contains the regression harness and direct examples.
@@ -75,9 +91,14 @@ Responsibilities:
 - provide a subprocess-based regression test path
 - keep the whole project as a single runnable file
 
-## Why this slim split exists
+## Why this compact split exists
 
 The wider project grew to include constants, CLSPR, Cosmolog, units, overlap, and workflow layers.
-This edition removes those layers so the symbolic EML and SymPy behaviour can be tested in isolation.
+This edition keeps the scope narrower:
 
-Pure mode extends this slim edition without reintroducing those wider domains. It adds a stricter EML-style constant representation while keeping the tool surface compact.
+- practical EML
+- pure-mode EML
+- SymPy comparison
+- compact generalized family inspection
+
+That keeps the server lightweight while still capturing the key ideas from both EML papers.

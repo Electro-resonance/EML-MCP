@@ -15,11 +15,25 @@ The EML compiler supports two modes:
 - **practical mode** — the default mode, intended for efficient evaluation and compact trees
 - **pure mode** — an opt-in mode intended for stricter EML-style structural inspection
 
-In pure mode, numeric constants are rewritten into EML constructions based on the distinguished constant `1`. This makes the resulting tree closer to the spirit of the EML paper, even though variables remain as variables and the implementation still serves practical evaluation workflows.
+In pure mode, numeric constants are rewritten into EML constructions based on the distinguished constant `1`.
+
+## Generalized family method
+
+The family tools add a second, metadata-driven method layer based on the follow-up paper.
+
+The central generalized operator viewpoint is:
+
+- a subtraction-like operation `M`
+- a paired function / inverse-function view `S(x, y) = M(f(x), f^{-1}(y))`
+- an induced abelian group law
+- a constructive recovery chain
+- function-family growth through addition formulas
+
+The current server packages these ideas as curated inspection tools for built-in families rather than as arbitrary symbolic proof machinery.
 
 ## Compilation strategy
 
-The compilation path is:
+The EML compilation path is:
 
 1. parse infix maths through SymPy
 2. simplify the parsed expression
@@ -35,11 +49,22 @@ Outputs may be complex because logarithms and branch behaviour are handled using
 
 The same evaluator is used for both practical and pure-mode trees.
 
+## Family-analysis strategy
+
+The family tools follow a symbolic inspection pattern:
+
+1. choose a built-in family from the curated library
+2. report its operator formula, seed constant, neutral element, and inverse map
+3. expose the induced abelian group law
+4. show the six-step recovery chain
+5. report what the family’s addition formula yields
+6. report any constant-free relevance or limitations
+
 ## Simplification strategy
 
 The simplifier normally performs constant folding over literal EML subtrees.
 
-In pure mode, simplification should preserve the structural intent of the tree rather than collapsing the pure constant representation back into ordinary numeric leaves.
+In pure mode, simplification preserves the structural intent of the tree rather than collapsing the pure constant representation back into ordinary numeric leaves.
 
 ## Stability strategy
 
@@ -79,12 +104,11 @@ It provides:
 - direct numeric evaluation
 - a second route for comparison against EML behaviour
 
-## Why combine EML and SymPy
+## Why combine the layers
 
-Using both routes lets you inspect whether:
+Using all layers together lets you inspect whether:
 
-- the EML path preserves structure in a useful way
-- the pure-mode EML path reveals a stricter constant construction
+- the practical EML path preserves structure in a useful way
+- the pure-mode path reveals a stricter constant construction
+- the family-inspection path reveals the generalized algebra behind EML
 - the SymPy path confirms the conventional symbolic result
-- the two routes agree numerically
-- the EML form reveals stability or branch behaviour that might be hidden in a more compact form

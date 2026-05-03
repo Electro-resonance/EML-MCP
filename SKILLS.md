@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This guide explains how to use the slim EML + SymPy edition of the MCP server.
+This guide explains how to use the slim EML + SymPy + family-tools edition of the MCP server.
 
 It is designed for workflows where you want to:
 
@@ -11,11 +11,12 @@ It is designed for workflows where you want to:
 - inspect how an expression is represented in EML (Exp-Minus-Log) form
 - simplify, evaluate, and analyse that EML tree
 - fit compact symbolic laws to data and convert the best candidate into EML
+- inspect generalized EML families from the follow-up paper
 - compare the EML route with standard symbolic algebra through SymPy
 
 ## Active tool surface
 
-The slim edition exposes the following tools:
+The server exposes the following tools:
 
 - `eml_compile`
 - `eml_eval`
@@ -24,6 +25,12 @@ The slim edition exposes the following tools:
 - `eml_stability_check`
 - `sympy_eval`
 - `sympy_simplify`
+- `eml_family_library`
+- `eml_extract_group_structure`
+- `eml_recover_core_family`
+- `eml_generate_from_addition_formula`
+- `eml_constant_free_scan`
+- `eml_explore_family`
 
 ## Practical mode and pure mode
 
@@ -55,6 +62,28 @@ Use the EML tools when you want the model to:
 4. `eml_eval` to evaluate the EML expression numerically
 5. `eml_stability_check` to inspect branch, overflow, and conditioning risks
 6. `eml_fit` when working from data rather than from a known closed form
+
+## When to use family tools
+
+Use the `eml_family_*` tools when you want to inspect the generalized operator perspective from the follow-up paper.
+
+### Typical family workflow
+
+1. `eml_family_library` to list the built-in families
+2. `eml_extract_group_structure` to inspect the hidden abelian-group structure
+3. `eml_recover_core_family` to see the six-step recovery chain
+4. `eml_generate_from_addition_formula` to inspect what downstream operations the family yields
+5. `eml_explore_family` when you want the whole picture in one call
+6. `eml_constant_free_scan` when you want to inspect the open constant-free-generator question
+
+## Built-in family names
+
+- `original_eml`
+- `cosine_arccos`
+- `arccot_cot`
+- `tanh_artanh`
+- `elliptic_pair`
+- `involutive_piecewise`
 
 ## When to use pure mode
 
@@ -123,6 +152,15 @@ Use the SymPy tools when you want:
 - Fit a compact law to the data, then simplify the best EML candidate and evaluate it at a new point.
 - Fit a small dataset that resembles `log(x)` and compare the top candidate laws.
 
+
+### Explore a generalized family
+
+- List the built-in generalized EML families.
+- Show the hidden group structure for `original_eml`.
+- Recover the six-step family chain for `tanh_artanh`.
+- Explain the addition formula and derived operations for `cosine_arccos`.
+- Show the constant-free candidates from the follow-up paper.
+
 ### Cross-check with SymPy
 
 - Simplify `sin(x)**2 + cos(x)**2` in both EML and SymPy.
@@ -155,11 +193,20 @@ Use the SymPy tools when you want:
 2. `eml_stability_check`
 3. `sympy_eval`
 
+### Generalized family inspection
+
+1. `eml_family_library`
+2. `eml_extract_group_structure`
+3. `eml_recover_core_family`
+4. `eml_generate_from_addition_formula`
+5. optionally `eml_explore_family`
+
 ## Practical notes
 
 - EML is useful when you want an explicit, inspectable symbolic form.
 - Creating the EML tree is often the most informative first step, because it exposes the structure that later simplification and evaluation operate on.
 - In this slim edition, tree creation is handled by `eml_compile`; there is no separate standalone tree tool.
 - Pure mode is most useful for structural inspection, not for the shortest or fastest representation.
+- The family tools are curated structural tools for built-in families, not arbitrary operator-proof checkers.
 - SymPy is useful when you want a conventional algebra baseline.
-- The most informative behaviour often comes from using both together.
+- The most informative behaviour often comes from using all three layers together: practical EML, pure EML, and generalized family inspection.

@@ -48,6 +48,10 @@ The regression suite currently checks:
 - `eml_fit` on a simple linear dataset
 - `sympy_simplify` on a classic trigonometric identity
 - `sympy_eval` on `sqrt(a^2 + b^2)`
+- `eml_family_library` for presence of `original_eml`
+- `eml_extract_group_structure` for the original EML family
+- `eml_constant_free_scan` for constant-free candidate reporting
+
 
 ## What success looks like
 
@@ -101,6 +105,33 @@ async def main():
                     "expr": "sqrt(a^2 + b^2)",
                     "bindings": {"a": 3, "b": 4},
                 },
+            )
+            print(result)
+
+asyncio.run(main())
+```
+
+```python
+import asyncio
+from mcp.client.session import ClientSession
+from mcp.client.stdio import StdioServerParameters, stdio_client
+
+
+async def main():
+    params = StdioServerParameters(
+        command="python",
+        args=["eml_mcp_server_v3.py", "server"],
+    )
+
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            tools = await session.list_tools()
+            print(tools)
+
+            result = await session.call_tool(
+                "eml_explore_family",
+                {"family": "original_eml"},
             )
             print(result)
 
@@ -170,6 +201,15 @@ sym = tool_sympy_simplify({
 print(sym["simplified"])
 ```
 
+### Family-tool example
+
+```python
+result = await session.call_tool(
+    "eml_generate_from_addition_formula",
+    {"family": "tanh_artanh"},
+)
+```
+
 ## Suggested external test patterns
 
 ### Python unit tests
@@ -181,6 +221,8 @@ Use `pytest` or `unittest` to check:
 - that `eml_eval` and `sympy_eval` agree on simple benchmark expressions
 - that `eml_stability_check` warns for `log(x)` near zero
 - that `eml_fit` returns a high `r2` on known synthetic datasets
+- that `eml_family_library` lists the expected families
+- that `eml_explore_family` returns the expected structural keys
 
 ### Cross-route comparison tests
 
@@ -198,3 +240,6 @@ Useful benchmark expressions include:
 - add golden-file snapshots for pure-mode example outputs
 - add tolerance-based comparison between EML and SymPy across parameter sweeps
 - add CI automation so every commit runs the slim harness
+- add more regression cases for family-tool outputs
+- add golden-file snapshots for pure-mode outputs
+- add CI automation so every commit runs the harness

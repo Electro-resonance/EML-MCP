@@ -1,6 +1,6 @@
 # Function Catalog
 
-This document describes the active tool surface for the slim EML + SymPy edition.
+This document describes the active tool surface for the EML + SymPy + family-tools edition.
 The examples below are deliberately small enough to understand quickly, but rich enough to show how an LLM or Python caller would actually use the tools.
 
 ## EML symbolic core
@@ -329,7 +329,150 @@ Another understandable but richer example:
 
 Related: `sympy_eval`, `eml_compile`, `eml_simplify`
 
-## Suggested comparison patterns
+## Generalized EML family tools
+
+These tools are compact structural tools for built-in generalized families. They are based on curated family metadata, not arbitrary operator proof search.
+
+### `eml_family_library`
+List the built-in generalized EML families or inspect one family.
+
+Arguments:
+- `family` (string) optional
+
+Returns:
+- when omitted: a summary list of all built-in families
+- when provided: the full metadata for the selected family
+
+Example call:
+```json
+{
+  "name": "eml_family_library",
+  "arguments": {}
+}
+```
+
+Example call for one family:
+```json
+{
+  "name": "eml_family_library",
+  "arguments": {
+    "family": "original_eml"
+  }
+}
+```
+
+### `eml_extract_group_structure`
+Expose the hidden abelian-group data behind a built-in generalized EML family.
+
+Arguments:
+- `family` (string) required
+
+Returns:
+- operator formula
+- neutral element
+- inverse map
+- induced group law
+- symbolic axiom flags
+
+Example call:
+```json
+{
+  "name": "eml_extract_group_structure",
+  "arguments": {
+    "family": "original_eml"
+  }
+}
+```
+
+### `eml_recover_core_family`
+Return the six-step constructive recovery chain from the follow-up paper.
+
+Arguments:
+- `family` (string) required
+
+Returns the sequence for recovering:
+1. `f(x)`
+2. `f(x) ⊟ y`
+3. `g(x)`
+4. `x ⊟ y`
+5. the inverse map `ι(x)`
+6. the induced group law `x ⊞ y`
+
+Example call:
+```json
+{
+  "name": "eml_recover_core_family",
+  "arguments": {
+    "family": "tanh_artanh"
+  }
+}
+```
+
+### `eml_generate_from_addition_formula`
+Report the family-specific addition formula and what it can generate.
+
+Arguments:
+- `family` (string) required
+
+This is useful for seeing what downstream operations a family yields. Some families reach multiplication and powers, while others stop at narrower composition laws.
+
+Example call:
+```json
+{
+  "name": "eml_generate_from_addition_formula",
+  "arguments": {
+    "family": "cosine_arccos"
+  }
+}
+```
+
+### `eml_constant_free_scan`
+Summarise the open constant-free-generator question and curated candidates.
+
+Arguments:
+- none
+
+Returns:
+- the open-question marker
+- constant-free candidates from the built-in family library
+- notes on current limitations
+
+Example call:
+```json
+{
+  "name": "eml_constant_free_scan",
+  "arguments": {}
+}
+```
+
+### `eml_explore_family`
+Convenience aggregation of family metadata, group structure, recovery chain, and addition-law consequences.
+
+Arguments:
+- `family` (string) required
+
+Use this when you want the whole picture in one response rather than calling the other family tools separately.
+
+Example call:
+```json
+{
+  "name": "eml_explore_family",
+  "arguments": {
+    "family": "original_eml"
+  }
+}
+```
+
+## Built-in family names
+
+- `original_eml`
+- `cosine_arccos`
+- `arccot_cot`
+- `tanh_artanh`
+- `elliptic_pair`
+- `involutive_piecewise`
+
+## Suggested patterns
 
 ### Identity check
 - `eml_compile`
@@ -345,6 +488,23 @@ Related: `sympy_eval`, `eml_compile`, `eml_simplify`
 - inspect `leaf_analysis`
 - `eml_simplify` with `pure: true`
 - optionally compare the same expression against the practical mode output
+
+### Practical-vs-pure comparison
+- `eml_compile`
+- `eml_compile` with `pure: true`
+- inspect `leaf_analysis`
+
+### Family inspection
+- `eml_family_library`
+- `eml_extract_group_structure`
+- `eml_recover_core_family`
+- `eml_generate_from_addition_formula`
+- optionally `eml_explore_family`
+
+### Constant-free investigation
+- `eml_constant_free_scan`
+- inspect `involutive_piecewise`
+- compare limitations against `original_eml`
 
 ### Stability-aware fitting
 - `eml_fit`
